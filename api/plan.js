@@ -1,6 +1,10 @@
 import { get, put, BlobPreconditionFailedError } from '@vercel/blob';
 
-const BLOB_PATH = 'plan.json';
+// Preview and development deployments share this Blob store but are built from
+// other commits, so they carry their own roster file. Give them their own
+// object; otherwise an open preview tab keeps overwriting the real plan.
+const ENV = process.env.VERCEL_ENV || 'development';
+const BLOB_PATH = ENV === 'production' ? 'plan.json' : `plan-${ENV}.json`;
 const MAX_BODY = 4 * 1024 * 1024;
 
 function send(res, status, body) {

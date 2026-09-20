@@ -3,7 +3,7 @@
 // device sees the same arrangement; localStorage stays as the offline fallback.
 (function () {
  const API='api/plan', KEY_STORE='wedding-edit-key', POLL_MS=5000, PUSH_DELAY=700, RETRY_MS=4000;
- let etag=null, synced=null, applying=false, pushing=false, pushTimer=null, ready=false;
+ let etag=null, synced=null, applying=false, pushing=false, pushTimer=null, ready=false, conflicts=0;
  const statusEl=$('#sync-status'), keyButton=$('#edit-key');
 
  const time=()=>new Date().toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'});
@@ -44,6 +44,17 @@
   synced=serialize();
  }
 
+ // Adopt the deployed roster over whatever the other writer had.
+ function adoptRoster(plan){
+  const next=rebuild(plan,defaultRoster);
+  applying=true;
+  try{guests=next.guests;tables=next.tables;if(!tables[selected])selected=0;render()}finally{applying=false}
+  synced=null;
+  return next;
+ }
+ function planRoster(plan){return plan&&typeof plan.rosterHash==='string'?plan.rosterHash:null}
+ function stale(plan){const mine=rosterHash();return Boolean(plan&&mine&&defaultRoster&&planRoster(plan)!==mine)}
+
  function schedulePush(){
   if(!ready)return;
   clearTimeout(pushTimer);pushTimer=setTimeout(()=>push(),PUSH_DELAY);
@@ -68,13 +79,22 @@
    }
    if(res.status===409){
     etag=data.etag||null;
+    // Someone else wrote first. If their plan was built from a different
+    // roster file, re-apply ours rather than adopting an outdated guest list.
+    if(stale(data.plan)&&conflicts<5){
+     conflicts++;
+     const next=adoptRoster(data.plan);
+     status('명단이 다른 저장을 덮어씁니다 · '+next.guests.length+'명');
+     clearTimeout(pushTimer);pushTimer=setTimeout(()=>push({silent}),150);
+     return;
+    }
     if(data.plan)applyRemote(data.plan);
     status('다른 기기의 최신 배치를 불러왔습니다.','warn');
     notify('다른 기기에서 먼저 저장했습니다. 최신 배치를 불러왔으니 변경 내용을 다시 적용해 주세요.');
     return;
    }
    if(!res.ok)throw Error(data.error||'저장하지 못했습니다.');
-   etag=data.etag;synced=body;
+   etag=data.etag;synced=body;conflicts=0;
    status('모든 기기에 저장됨 · '+time());
    if(serialize()!==synced)schedulePush();
   }catch{
@@ -90,7 +110,14 @@
    if(!res.ok)return;
    const data=await res.json();
    if(!data.plan||!data.etag||data.etag===etag)return;
-   etag=data.etag;applyRemote(data.plan);
+   etag=data.etag;
+   if(stale(data.plan)){
+    const next=adoptRoster(data.plan);
+    status('명단이 다른 저장을 덮어씁니다 · '+next.guests.length+'명');
+    schedulePush();
+    return;
+   }
+   applyRemote(data.plan);
    status('다른 기기의 변경을 반영했습니다 · '+time());
   }catch{}
  }
@@ -129,10 +156,7 @@
   // unknown and must be treated as stale rather than trusted.
   if(data.plan&&here&&defaultRoster&&there!==here){
    etag=data.etag;
-   const next=rebuild(data.plan,defaultRoster);
-   applying=true;
-   try{guests=next.guests;tables=next.tables;if(!tables[selected])selected=0;render()}finally{applying=false}
-   synced=null;
+   const next=adoptRoster(data.plan);
    await push({silent:true});
    status('새 명단('+guests.length+'명)을 반영했습니다'+(next.kept?' · 좌석 '+next.kept+'석 유지':'')); 
    if(next.dropped)notify('명단이 바뀌어 '+next.dropped+'석의 배정이 해제되었습니다. 해당 하객이 새 명단에 없습니다.');
