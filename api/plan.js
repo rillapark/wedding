@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 import { get, put, BlobPreconditionFailedError } from '@vercel/blob';
 import * as XLSX from 'xlsx';
 
@@ -53,16 +55,27 @@ function parseWorkbook(buffer) {
 // The deployed workbook is the single source of truth for who is on the list.
 const ROSTER_TTL_MS = 10_000;
 let rosterCache = null, rosterCachedAt = 0;
+
+// Prefer the copy bundled with the function (see vercel.json includeFiles);
+// fetching the deployment over HTTP is a fallback and can hang, so it is bounded.
+async function rosterBytes() {
+  if (process.env.ROSTER_FILE) return await readFile(process.env.ROSTER_FILE);
+  for (const candidate of ['dist/data/guests.xlsx', '../dist/data/guests.xlsx']) {
+    try { return await readFile(path.resolve(process.cwd(), candidate)); } catch {}
+  }
+  const url = process.env.ROSTER_URL
+    || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}/data/guests.xlsx` : null);
+  if (!url) throw new Error('명단 파일을 찾지 못했습니다.');
+  const res = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(4000) });
+  if (!res.ok) throw new Error('명단 파일을 읽지 못했습니다.');
+  return Buffer.from(await res.arrayBuffer());
+}
+
 async function loadRoster() {
   if (rosterCache && Date.now() - rosterCachedAt < ROSTER_TTL_MS) return rosterCache;
-  const base = process.env.ROSTER_URL
-    || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}/data/guests.xlsx` : null);
-  if (!base) return null;
-  const res = await fetch(base, { cache: 'no-store' });
-  if (!res.ok) throw new Error('명단 파일을 읽지 못했습니다.');
-  const buffer = await res.arrayBuffer();
-  const hash = createHash('sha256').update(Buffer.from(buffer)).digest('hex');
-  rosterCache = { ...parseWorkbook(buffer), hash };
+  const bytes = await rosterBytes();
+  const hash = createHash('sha256').update(bytes).digest('hex');
+  rosterCache = { ...parseWorkbook(bytes), hash };
   rosterCachedAt = Date.now();
   return rosterCache;
 }
@@ -148,8 +161,11 @@ async function current() {
   try { roster = await loadRoster(); } catch { roster = null; }
   if (!roster) return stored;
   if (stored.plan && stored.plan.rosterHash === roster.hash) return stored;
-  const rebuilt = await write(reseat(stored.plan, roster), stored.etag);
-  return rebuilt;
+  const fixed = reseat(stored.plan, roster);
+  // Serve the corrected roster even when persisting it does not work, so a
+  // failed write can never put the old guest list back in front of anyone.
+  try { return await write(fixed, stored.etag); }
+  catch { return { plan: fixed, etag: stored.etag }; }
 }
 
 async function readBody(req) {
@@ -170,7 +186,10 @@ async function readBody(req) {
 export default async function handler(req, res) {
   try {
     if (req.method === 'GET') {
-      const state = await current();
+      // Reading is the path everyone depends on; degrade rather than fail.
+      let state;
+      try { state = await current(); }
+      catch { state = await readStored().catch(() => ({ plan: null, etag: null })); }
       return send(res, 200, { ...state, requiresKey: Boolean(process.env.EDIT_KEY) });
     }
 
@@ -184,7 +203,7 @@ export default async function handler(req, res) {
       try { roster = await loadRoster(); } catch { roster = null; }
 
       // A client working from a different workbook may not overwrite the plan.
-      if (roster && body?.plan?.rosterHash !== roster.hash) {
+      if (roster ? body?.plan?.rosterHash !== roster.hash : typeof body?.plan?.rosterHash !== 'string') {
         const state = await current();
         return send(res, 409, { error: '명단이 바뀌었습니다. 최신 명단을 불러왔습니다.', ...state });
       }

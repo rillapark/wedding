@@ -5,8 +5,16 @@
     {
       "source": "/(.*)",
       "headers": [
-        { "key": "Cache-Control", "value": "no-cache, must-revalidate" }
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, must-revalidate"
+        }
       ]
     }
-  ]
+  ],
+  "functions": {
+    "api/plan.js": {
+      "includeFiles": "dist/data/**"
+    }
+  }
 }
