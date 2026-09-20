@@ -37,7 +37,12 @@ function validate(plan) {
     });
     return { capacity: t.capacity, seats };
   });
-  return { guests: cleanGuests, tables: cleanTables };
+  let rosterHash = null;
+  if (plan.rosterHash !== undefined && plan.rosterHash !== null) {
+    if (typeof plan.rosterHash !== 'string' || plan.rosterHash.length > 128) throw new Error('명단 식별자가 올바르지 않습니다.');
+    rosterHash = plan.rosterHash;
+  }
+  return { guests: cleanGuests, tables: cleanTables, rosterHash };
 }
 
 async function readPlan() {

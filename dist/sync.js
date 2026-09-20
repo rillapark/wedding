@@ -11,6 +11,31 @@
  function storedKey(){try{return localStorage.getItem(KEY_STORE)||''}catch{return ''}}
  function storeKey(v){try{v?localStorage.setItem(KEY_STORE,v):localStorage.removeItem(KEY_STORE)}catch{}}
  function serialize(){return JSON.stringify({guests,tables})}
+ function rosterHash(){return typeof defaultRosterHash==='string'?defaultRosterHash:null}
+
+ // The shared plan pins the roster it was built from. When the deployed
+ // workbook changes, adopt the new names rather than letting the stored plan
+ // keep resurrecting the old ones, and carry seats over by name + group.
+ function rebuild(plan,parsed){
+  const oldById=new Map(plan.guests.map(g=>[g.id,g]));
+  const k=g=>String(g.name||'').trim()+'\u0000'+String(g.group||'').trim();
+  const byKey=new Map();
+  for(const g of parsed.guests)if(!byKey.has(k(g)))byKey.set(k(g),g);
+  const tables=parsed.tables.map((t,ti)=>{
+   const prev=plan.tables[ti];let capacity=t.capacity;
+   if(prev&&[8,9,10].includes(prev.capacity)&&!t.seats.slice(prev.capacity).some(x=>x!==null))capacity=prev.capacity;
+   return {capacity,seats:t.seats.slice()};
+  });
+  const used=new Set(tables.flatMap(t=>t.seats).filter(x=>x!==null));
+  let kept=0,dropped=0;
+  plan.tables.forEach((t,ti)=>t.seats.forEach((id,si)=>{
+   if(id===null||!tables[ti])return;
+   const old=oldById.get(id),match=old&&byKey.get(k(old));
+   if(!match||used.has(match.id)||si>=tables[ti].capacity||tables[ti].seats[si]!==null){dropped++;return}
+   tables[ti].seats[si]=match.id;used.add(match.id);kept++;
+  }));
+  return {guests:parsed.guests,tables,kept,dropped};
+ }
 
  function applyRemote(plan){
   applying=true;
@@ -34,7 +59,7 @@
   try{
    const headers={'Content-Type':'application/json'},key=storedKey();
    if(key)headers['x-edit-key']=key;
-   const res=await fetch(API,{method:'PUT',headers,cache:'no-store',body:JSON.stringify({plan:JSON.parse(body),etag})});
+   const res=await fetch(API,{method:'PUT',headers,cache:'no-store',body:JSON.stringify({plan:{...JSON.parse(body),rosterHash:rosterHash()},etag})});
    const data=await res.json().catch(()=>({}));
    if(res.status===401){
     status('편집하려면 암호가 필요합니다.','warn');
@@ -99,7 +124,18 @@
   }
   ready=true;
   showKeyButton(data.requiresKey);
-  if(data.plan){etag=data.etag;applyRemote(data.plan);status('공유 배치를 불러왔습니다 · '+time())}
+  const here=rosterHash(),there=data.plan&&typeof data.plan.rosterHash==='string'?data.plan.rosterHash:null;
+  if(data.plan&&here&&there&&here!==there&&defaultRoster){
+   etag=data.etag;
+   const next=rebuild(data.plan,defaultRoster);
+   applying=true;
+   try{guests=next.guests;tables=next.tables;if(!tables[selected])selected=0;render()}finally{applying=false}
+   synced=null;
+   await push({silent:true});
+   status('새 명단('+guests.length+'명)을 반영했습니다'+(next.kept?' · 좌석 '+next.kept+'석 유지':'')); 
+   if(next.dropped)notify('명단이 바뀌어 '+next.dropped+'석의 배정이 해제되었습니다. 해당 하객이 새 명단에 없습니다.');
+  }
+  else if(data.plan){etag=data.etag;applyRemote(data.plan);status('공유 배치를 불러왔습니다 · '+time())}
   else{etag=null;synced=null;status('공유 저장을 시작합니다…');await push({silent:true})}
   setInterval(()=>{if(!document.hidden)poll()},POLL_MS);
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)poll()});
