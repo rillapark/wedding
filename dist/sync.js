@@ -125,7 +125,9 @@
   ready=true;
   showKeyButton(data.requiresKey);
   const here=rosterHash(),there=data.plan&&typeof data.plan.rosterHash==='string'?data.plan.rosterHash:null;
-  if(data.plan&&here&&there&&here!==there&&defaultRoster){
+  // A plan with no rosterHash predates that field, so its roster provenance is
+  // unknown and must be treated as stale rather than trusted.
+  if(data.plan&&here&&defaultRoster&&there!==here){
    etag=data.etag;
    const next=rebuild(data.plan,defaultRoster);
    applying=true;
