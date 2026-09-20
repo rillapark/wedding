@@ -5,7 +5,7 @@ let sourceConfig={url:'data/guests.xlsx',checkIntervalMs:60000};
 function persistSeating(){
  if(!sourceReady)return;
  try{localStorage.setItem(CACHE_KEY,JSON.stringify({version:3,guests,tables,sourceHash,label:$('#source-label').textContent}))}
- catch{ $('#source-status').textContent='이 브라우저에서 자동 저장할 수 없습니다. 엑셀로 저장해 주세요.' }
+ catch{ $('#source-status').textContent='이 브라우저에 임시 저장할 수 없습니다.' }
 }
 function restoreSeating(){
  try{
@@ -25,7 +25,7 @@ $('#confirm-import').onclick=()=>{
  const nextHash=pending.sourceHash;
  baseConfirmImport();hasSavedState=true;
  if(nextHash){sourceHash=nextHash;sourceUpdate=null;$('#apply-source').hidden=true;$('#source-status').textContent='기본 엑셀의 최신 명단을 적용했습니다.'}
- else $('#source-status').textContent='업로드한 명단과 배치를 이 브라우저에 자동 저장합니다.';
+ else $('#source-status').textContent='업로드한 명단으로 교체했습니다.';
  persistSeating();
 };
 async function fetchSource(manual=false){
@@ -37,10 +37,10 @@ async function fetchSource(manual=false){
   const buffer=await response.arrayBuffer();if(buffer.byteLength>10*1024*1024)throw Error('기본 엑셀은 10MB 이하여야 합니다.');
   const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',buffer)),b=>b.toString(16).padStart(2,'0')).join('');
   const parsed=parseWorkbook(XLSX.read(buffer,{type:'array'}));
-  if(!hasSavedState){guests=parsed.guests;tables=parsed.tables;selected=0;sourceHash=hash;hasSavedState=true;$('#source-label').textContent='기본 엑셀 · '+guests.length+'명';render();$('#source-status').textContent='기본 엑셀을 불러왔습니다. 작업은 이 브라우저에 자동 저장됩니다.'}
+  if(!hasSavedState){guests=parsed.guests;tables=parsed.tables;selected=0;sourceHash=hash;hasSavedState=true;$('#source-label').textContent='기본 엑셀 · '+guests.length+'명';render();$('#source-status').textContent='기본 엑셀 명단을 불러왔습니다.'}
   else if(sourceHash===null){sourceHash=hash;persistSeating();$('#source-status').textContent='저장된 작업을 복원했습니다. 기본 명단도 확인했습니다.'}
   else if(hash!==sourceHash){sourceUpdate={...parsed,filename:'기본 엑셀 · '+parsed.guests.length+'명',sourceHash:hash};$('#apply-source').hidden=false;$('#source-status').textContent='기본 엑셀이 변경되었습니다. 현재 작업을 저장한 뒤 새 명단을 적용할 수 있습니다.'}
-  else{sourceUpdate=null;$('#apply-source').hidden=true;if(manual)notify('기본 엑셀에 변경 사항이 없습니다.');$('#source-status').textContent='기본 엑셀 확인 완료 · 작업은 이 브라우저에 자동 저장됩니다.'}
+  else{sourceUpdate=null;$('#apply-source').hidden=true;if(manual)notify('기본 엑셀에 변경 사항이 없습니다.');$('#source-status').textContent='기본 엑셀 확인 완료'}
  }catch(error){$('#source-status').textContent=error.message||'기본 명단을 확인하지 못했습니다. 현재 작업은 유지됩니다.';if(manual)notify($('#source-status').textContent)}
  finally{sourceBusy=false;$('#reload-source').disabled=false}
 }
@@ -57,4 +57,4 @@ async function initializeRoster(){
  hasSavedState=true;render();$('#import').disabled=false;
  setInterval(()=>{if(!document.hidden)fetchSource()},sourceConfig.checkIntervalMs);
 }
-initializeRoster();
+window.rosterReady=initializeRoster();
