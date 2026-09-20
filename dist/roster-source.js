@@ -4,7 +4,7 @@ let sourceHash=null,sourceUpdate=null,sourceBusy=false,sourceReady=false,hasSave
 let sourceConfig={url:'data/guests.xlsx',checkIntervalMs:60000};
 // The default workbook and its hash, recorded on every fetch so the shared
 // plan can tell whether it was built from the roster file currently deployed.
-let defaultRosterHash=null,defaultRoster=null;
+let defaultRosterHash=null,defaultRoster=null,defaultRosterInfo=null;
 function persistSeating(){
  if(!sourceReady)return;
  try{localStorage.setItem(CACHE_KEY,JSON.stringify({version:3,guests,tables,sourceHash,label:$('#source-label').textContent}))}
@@ -41,6 +41,8 @@ async function fetchSource(manual=false){
   const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',buffer)),b=>b.toString(16).padStart(2,'0')).join('');
   const parsed=parseWorkbook(XLSX.read(buffer,{type:'array'}));
   defaultRosterHash=hash;defaultRoster=parsed;
+  defaultRosterInfo={url:url.pathname+url.search.replace(/[?&]_updated=\d+/,''),bytes:buffer.byteLength,count:parsed.guests.length,hash:hash.slice(0,8)};
+  const info=$('#roster-info');if(info)info.textContent='받은 파일: '+defaultRosterInfo.url+' · '+defaultRosterInfo.count+'명 · '+(defaultRosterInfo.bytes/1024).toFixed(1)+'KB · '+defaultRosterInfo.hash;
   if(!hasSavedState){guests=parsed.guests;tables=parsed.tables;selected=0;sourceHash=hash;hasSavedState=true;$('#source-label').textContent='기본 엑셀 · '+guests.length+'명';render();$('#source-status').textContent='기본 엑셀 명단을 불러왔습니다.'}
   else if(sourceHash===null){sourceHash=hash;persistSeating();$('#source-status').textContent='저장된 작업을 복원했습니다. 기본 명단도 확인했습니다.'}
   else if(hash!==sourceHash){sourceUpdate={...parsed,filename:'기본 엑셀 · '+parsed.guests.length+'명',sourceHash:hash};$('#apply-source').hidden=false;$('#source-status').textContent='기본 엑셀이 변경되었습니다. 현재 작업을 저장한 뒤 새 명단을 적용할 수 있습니다.'}
