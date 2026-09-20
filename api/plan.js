@@ -66,7 +66,7 @@ export default async function handler(req, res) {
   try {
     if (req.method === 'GET') {
       const current = await readPlan();
-      return send(res, 200, current);
+      return send(res, 200, { ...current, requiresKey: Boolean(process.env.EDIT_KEY) });
     }
 
     if (req.method === 'PUT') {

@@ -78,6 +78,9 @@
   else status('보기 전용입니다.');
  }
  if(keyButton)keyButton.onclick=promptKey;
+ // The password is a deploy-time switch (EDIT_KEY): hide the control entirely
+ // when the server is not asking for one, so the UI matches how it behaves.
+ function showKeyButton(required){if(keyButton)keyButton.hidden=!required}
 
  const baseRender=render;
  render=function(){baseRender();if(!applying)schedulePush()};
@@ -95,6 +98,7 @@
    return;
   }
   ready=true;
+  showKeyButton(data.requiresKey);
   if(data.plan){etag=data.etag;applyRemote(data.plan);status('공유 배치를 불러왔습니다 · '+time())}
   else{etag=null;synced=null;status('공유 저장을 시작합니다…');await push({silent:true})}
   setInterval(()=>{if(!document.hidden)poll()},POLL_MS);
