@@ -1,4 +1,4 @@
 {
-  "url": "https://raw.githubusercontent.com/rillapark/wedding/main/dist/data/guests.xlsx",
+  "url": "data/guests.xlsx",
   "checkIntervalMs": 60000
 }

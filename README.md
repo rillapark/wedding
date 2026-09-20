@@ -50,9 +50,9 @@ CLI로 배포하려면 저장소 루트에서 `npx vercel --prod`를 실행합�
 
 ### 명단 파일을 읽는 위치
 
-`dist/roster-config.json`의 `url`이 현재 `https://raw.githubusercontent.com/rillapark/wedding/main/dist/data/guests.xlsx`이므로, 사이트는 **main 브랜치의 엑셀**을 읽습니다. 따라서 엑셀만 교체하면 Vercel 재배포 없이 반영됩니다. main 브랜치에 그 파일이 없으면 불러오기에 실패하고 내장된 가상 하객 200명이 그대로 표시됩니다.
+`dist/roster-config.json`의 `url`은 현재 `data/guests.xlsx`이며, **배포된 사이트 자신의 엑셀 파일**을 읽습니다. 저장소 공개 여부와 무관하게 항상 동작합니다. 엑셀을 교체하면 다시 배포해야 반영됩니다. Vercel이 GitHub에 연결되어 있으면 main 브랜치에 푸시할 때 자동으로 재배포되므로 사실상 푸시만 하면 됩니다.
 
-Vercel이 배포한 자기 사이트의 파일을 읽게 하려면 `url`을 `data/guests.xlsx`로 바꾸세요. 이 경우에는 엑셀을 교체할 때마다 재배포가 필요합니다.
+재배포 없이 엑셀만 교체해서 반영하고 싶다면 `url`을 GitHub Raw 주소(`https://raw.githubusercontent.com/rillapark/wedding/main/dist/data/guests.xlsx`)로 바꾸세요. 다만 이 방식은 **저장소가 공개일 때만** 동작하고, 그만큼 명단 파일도 누구나 읽을 수 있습니다.
 
 ## 이미지
 
